@@ -7,8 +7,11 @@ import (
 	"news-scrabber/internal/kv"
 	"news-scrabber/internal/natsx"
 	"news-scrabber/internal/scraper"
+	"news-scrabber/internal/search/elasticsearch"
+	"news-scrabber/internal/server"
 	"news-scrabber/internal/storage/s3client"
 	"news-scrabber/internal/transcribe"
+	"news-scrabber/internal/transcribe/whisper"
 	"news-scrabber/internal/vector/qdrant"
 
 	"go.uber.org/fx"
@@ -30,6 +33,13 @@ func Serve() *fx.App {
 			fx.Provide(kv.NewKVStore),          // simplified KV factory (accepts existing NATS conn)
 			fx.Provide(s3client.New),
 			fx.Provide(qdrant.NewClient),
+			fx.Provide(elasticsearch.NewClient), // Elasticsearch HTTP client
+			fx.Provide(whisper.NewClient),       // Faster-Whisper HTTP client
+		),
+
+		fx.Module("http",
+			fx.Provide(server.NewFiberApp),
+			fx.Invoke(server.Start),
 		),
 
 		fx.Module("domain",

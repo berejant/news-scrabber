@@ -17,6 +17,7 @@ services:
       # приклад змінних оточення – адаптуйте під свій код
       NATS_URL: "nats://nats:4222"
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
+      WHISPER_URL: "http://faster-whisper:10300"
       QDRANT_URL: "http://qdrant:6333"
       S3_ENDPOINT: "http://seaweedfs-s3:8333"
       S3_BUCKET: "my-bucket"
@@ -75,6 +76,24 @@ services:
       - "8222:8222"
     volumes:
       - nats-data:/data
+    restart: unless-stopped
+
+  faster-whisper:
+    image: linuxserver/faster-whisper:latest
+    container_name: faster-whisper
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - DEBUG= #optional
+      - LOCAL_ONLY= #optional
+      - WHISPER_BEAM=1 #optional
+      - WHISPER_LANG=auto #optional
+      - WHISPER_MODEL=auto #optional
+    volumes:
+      - /path/to/faster-whisper/data:/config
+    ports:
+      - 10300:10300
     restart: unless-stopped
 
   # Elasticsearch (одновузловий для dev)

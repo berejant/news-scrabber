@@ -8,13 +8,15 @@ type Config struct {
 	Server ServerConfig `envPrefix:"SERVER_"`
 
 	// New modules for news-scrabber app
-	NATS       NATSConfig       `envPrefix:"NATS_"`
-	JetStream  JetStreamConfig  `envPrefix:"JS_"`
-	S3         S3Config         `envPrefix:"S3_"`
-	Qdrant     QdrantConfig     `envPrefix:"QDRANT_"`
-	OpenAI     OpenAIConfig     `envPrefix:"OPENAI_"`
-	Transcribe TranscribeConfig `envPrefix:"TRANSCRIBE_"`
-	Scraper    ScraperConfig    `envPrefix:"SCRAPER_"`
+	NATS         NATSConfig         `envPrefix:"NATS_"`
+	JetStream    JetStreamConfig    `envPrefix:"JS_"`
+	S3           S3Config           `envPrefix:"S3_"`
+	Qdrant       QdrantConfig       `envPrefix:"QDRANT_"`
+	Elasticsearch ElasticsearchConfig `envPrefix:"ELASTICSEARCH_"`
+	OpenAI       OpenAIConfig       `envPrefix:"OPENAI_"`
+	Whisper      WhisperConfig      `envPrefix:"WHISPER_"`
+	Transcribe   TranscribeConfig   `envPrefix:"TRANSCRIBE_"`
+	Scraper      ScraperConfig      `envPrefix:"SCRAPER_"`
 
 	MaxPublishRetryAttempts uint8 `env:"MAX_PUBLISH_RETRY_ATTEMPTS" envDefault:"10"`
 
