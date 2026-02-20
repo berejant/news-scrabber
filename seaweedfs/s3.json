@@ -1,0 +1,15 @@
+{
+  "identities": [
+    {
+      "name": "default",
+      "credentials": [
+        {
+          "accessKey": "YOUR_ACCESS_KEY",
+          "secretKey": "YOUR_SECRET_KEY"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write"],
+      "resources": ["arn:aws:s3:::*"]
+    }
+  ]
+}

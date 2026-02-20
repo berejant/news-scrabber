@@ -9,6 +9,7 @@ import (
 	"news-scrabber/internal/scraper"
 	"news-scrabber/internal/search/elasticsearch"
 	"news-scrabber/internal/server"
+	"news-scrabber/internal/server/actions/transribe"
 	"news-scrabber/internal/storage/s3client"
 	"news-scrabber/internal/transcribe"
 	"news-scrabber/internal/transcribe/whisper"
@@ -28,9 +29,10 @@ func Serve() *fx.App {
 		),
 
 		fx.Module("infra",
-			fx.Provide(natsx.BuildNATSOptions), // shared NATS connection (event bus + KV)
-			fx.Provide(natsx.NewJetStream),     // event bus JetStream for services
-			fx.Provide(kv.NewKVStore),          // simplified KV factory (accepts existing NATS conn)
+			fx.Provide(natsx.BuildNATSOptions),  // shared NATS options
+			fx.Provide(natsx.NewJetStream),      // JetStream client using shared conn
+			fx.Invoke(natsx.EnsureEventsStream), // ensure events stream exists
+			fx.Provide(kv.NewKVStore),           // simplified KV factory (accepts existing NATS conn)
 			fx.Provide(s3client.New),
 			fx.Provide(qdrant.NewClient),
 			fx.Provide(elasticsearch.NewClient), // Elasticsearch HTTP client
@@ -38,6 +40,7 @@ func Serve() *fx.App {
 		),
 
 		fx.Module("http",
+			fx.Provide(transribe.NewRequestTranscribeAction),
 			fx.Provide(server.NewFiberApp),
 			fx.Invoke(server.Start),
 		),
@@ -45,6 +48,8 @@ func Serve() *fx.App {
 		fx.Module("domain",
 			fx.Provide(scraper.NewService),
 			fx.Provide(transcribe.NewService),
+			fx.Provide(transcribe.NewPublisher),
+			fx.Provide(transcribe.NewDispatcher),
 			fx.Provide(enrich.NewService),
 		),
 
@@ -53,6 +58,8 @@ func Serve() *fx.App {
 			_ *scraper.Service,
 			_ *transcribe.Service,
 			_ *enrich.Service,
+			_ transcribe.TranscribeEventPublisher,
+			_ *transcribe.Dispatcher,
 		) {
 			// constructors register lifecycle hooks; nothing else to invoke here
 		}),

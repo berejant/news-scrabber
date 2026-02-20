@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"news-scrabber/internal/config"
+	"os"
+	"path/filepath"
 
 	"go.uber.org/fx"
 	"go.uber.org/zap"
@@ -11,13 +13,14 @@ import (
 
 // Client is a minimal placeholder S3 client suitable for Seaweed S3 gateway.
 type Client struct {
-	HTTP     *http.Client
-	Endpoint string
-	Region   string
-	Bucket   string
+	HTTP      *http.Client
+	Endpoint  string
+	Region    string
+	Bucket    string
 	AccessKey string
 	SecretKey string
 	UseSSL    bool
+	log       *zap.Logger
 }
 
 func New(lc fx.Lifecycle, cfg *config.Config, log *zap.Logger) (*Client, error) {
@@ -29,6 +32,7 @@ func New(lc fx.Lifecycle, cfg *config.Config, log *zap.Logger) (*Client, error) 
 		AccessKey: cfg.S3.AccessKey,
 		SecretKey: cfg.S3.SecretKey,
 		UseSSL:    cfg.S3.UseSSL,
+		log:       log.With(zap.String("component", "s3")),
 	}
 
 	lc.Append(fx.Hook{
@@ -43,4 +47,18 @@ func New(lc fx.Lifecycle, cfg *config.Config, log *zap.Logger) (*Client, error) 
 	})
 
 	return c, nil
+}
+
+// Upload uploads a local file under the provided key. Placeholder returns the key without real upload.
+// Replace with a proper S3 SDK or SeaweedFS S3 signed request.
+func (c *Client) Upload(ctx context.Context, key, localPath string) (string, error) {
+	if _, err := os.Stat(localPath); err != nil {
+		return "", err
+	}
+	if key == "" {
+		key = filepath.Base(localPath)
+	}
+	c.log.Info("S3 upload (placeholder)", zap.String("key", key), zap.String("path", localPath))
+	// TODO: implement actual upload using AWS SDK or MinIO SDK.
+	return key, nil
 }

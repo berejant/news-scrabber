@@ -4,9 +4,9 @@ import (
 	"context"
 	"net/http"
 	"news-scrabber/internal/config"
-	"news-scrabber/internal/natsx"
 	"time"
 
+	"github.com/nats-io/nats.go/jetstream"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
@@ -16,11 +16,11 @@ import (
 type Service struct {
 	cfg  *config.Config
 	log  *zap.Logger
-	js   *natsx.JetStream
+	js   jetstream.JetStream
 	http *http.Client
 }
 
-func NewService(lc fx.Lifecycle, cfg *config.Config, log *zap.Logger, js *natsx.JetStream) (*Service, error) {
+func NewService(lc fx.Lifecycle, cfg *config.Config, log *zap.Logger, js jetstream.JetStream) (*Service, error) {
 	s := &Service{
 		cfg:  cfg,
 		log:  log.With(zap.String("component", "scraper")),

@@ -3,21 +3,25 @@ package enrich
 import (
 	"context"
 	"news-scrabber/internal/config"
-	"news-scrabber/internal/natsx"
 
+	"github.com/nats-io/nats.go/jetstream"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
 )
 
 // Service performs enrichment of parsed/transcribed items and republishes enriched events.
 type Service struct {
-	cfg *config.Config
-	js  *natsx.JetStream
 	log *zap.Logger
+	cfg *config.Config
+	js  jetstream.JetStream
 }
 
-func NewService(lc fx.Lifecycle, cfg *config.Config, js *natsx.JetStream, log *zap.Logger) (*Service, error) {
-	s := &Service{cfg: cfg, js: js, log: log.With(zap.String("component", "enrich"))}
+func NewService(lc fx.Lifecycle, log *zap.Logger, cfg *config.Config, js jetstream.JetStream) (*Service, error) {
+	s := &Service{
+		log: log.With(zap.String("component", "enrich")),
+		cfg: cfg,
+		js:  js,
+	}
 	lc.Append(fx.Hook{
 		OnStart: func(ctx context.Context) error {
 			s.log.Info("enrichment service started (placeholder)")

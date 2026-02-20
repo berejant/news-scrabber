@@ -1,12 +1,14 @@
 package server
 
 import (
+	"news-scrabber/internal/server/actions/transribe"
+
 	"github.com/gofiber/fiber/v3"
 )
 
 // RegisterRoutes wires all HTTP routes for the application.
 // Split into a separate file from server.go to keep routing concerns isolated.
-func RegisterRoutes(app *fiber.App) {
+func RegisterRoutes(app *fiber.App, act *transribe.RequestTranscribeAction) {
 	// Health and readiness endpoints
 	app.Get("/healthz", func(c fiber.Ctx) error {
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
@@ -18,8 +20,7 @@ func RegisterRoutes(app *fiber.App) {
 		return c.SendStatus(fiber.StatusOK)
 	})
 
-	// TODO: add domain-specific routes here, e.g.:
-	// api := app.Group("/api")
-	// v1 := api.Group("/v1")
-	// v1.Get("/items", listItemsHandler)
+	// Transcription API
+	v1 := app.Group("/api/v1")
+	v1.Post("/transcribe-requests", act.Handle)
 }

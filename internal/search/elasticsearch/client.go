@@ -1,7 +1,9 @@
 package elasticsearch
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -39,4 +41,27 @@ func (c *Client) Ping(ctx context.Context) error {
 		return nil
 	}
 	return fmt.Errorf("elasticsearch ping failed: status=%d", resp.StatusCode)
+}
+
+// IndexText indexes a simple JSON document into the provided index with the provided ID.
+func (c *Client) IndexText(ctx context.Context, index, docID string, body any) error {
+	b, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/%s/_doc/%s", c.BaseURL, index, docID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, url, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	return fmt.Errorf("elasticsearch index failed: status=%d", resp.StatusCode)
 }

@@ -9,14 +9,15 @@ import (
 	"go.uber.org/zap"
 
 	"news-scrabber/internal/config"
+	"news-scrabber/internal/server/actions/transribe"
 )
 
 // NewFiberApp constructs a Fiber application and registers routes.
-func NewFiberApp(cfg *config.Config, log *zap.Logger) *fiber.App {
+func NewFiberApp(cfg *config.Config, log *zap.Logger, act *transribe.RequestTranscribeAction) *fiber.App {
 	app := fiber.New()
 
 	// Register all routes
-	RegisterRoutes(app)
+	RegisterRoutes(app, act)
 
 	log.Info("fiber app initialized")
 	return app

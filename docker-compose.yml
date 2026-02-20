@@ -2,10 +2,12 @@ version: "3.9"
 
 services:
   parser:
+    profiles:
+      - go-apps
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["/app/cmd/parser"]   # змініть на реальний шлях/команду
+    command: ["/app/parser"]
     depends_on:
       - nats
       - elasticsearch
@@ -14,7 +16,6 @@ services:
       - seaweedfs-volume
       - seaweedfs-s3
     environment:
-      # приклад змінних оточення – адаптуйте під свій код
       NATS_URL: "nats://nats:4222"
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
       WHISPER_URL: "http://faster-whisper:10300"
@@ -34,10 +35,12 @@ services:
     restart: unless-stopped
 
   enricher:
+    profiles:
+      - go-apps
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["/app/cmd/enricher"] # змініть на реальний шлях/команду
+    command: ["/app/enricher"]
     depends_on:
       - nats
       - elasticsearch
@@ -154,7 +157,7 @@ services:
     ports:
       - "8333:8333"   # S3 endpoint
     volumes:
-      - ./seaweedfs/s3.json:/etc/seaweedfs/s3.json:ro
+      - ./seaweedfs:/etc/seaweedfs:ro
     restart: unless-stopped
 
   # SeaweedFS filer (потрібен для S3)
@@ -177,8 +180,6 @@ services:
       - "4317:4317"
       - "4318:4318"
     restart: always
-    networks:
-      - app
     environment:
       COLLECTOR_OTLP_ENABLED: 'true'
 
