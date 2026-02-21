@@ -1,2 +1,5 @@
 bin/*
 !bin/.gitkeep
+
+tests/static/*
+!tests/static/.gitkeep

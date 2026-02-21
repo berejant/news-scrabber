@@ -176,7 +176,7 @@ func (j *IngestJob) scanOnce(ctx context.Context) {
 	}
 	sort.Strings(files)
 	for _, f := range files {
-		if err := j.processOne(ctx, f); err != nil {
+git		if err := j.processOne(ctx, f); err != nil {
 			j.log.Warn("process chunk failed", zap.String("file", f), zap.Error(err))
 			continue
 		}

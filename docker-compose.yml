@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   parser:
     profiles:
@@ -18,7 +16,7 @@ services:
     environment:
       NATS_URL: "nats://nats:4222"
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
-      WHISPER_URL: "http://faster-whisper:10300"
+      WHISPER_URL: "http://whisper:10300"
       QDRANT_URL: "http://qdrant:6333"
       S3_ENDPOINT: "http://seaweedfs-s3:8333"
       S3_BUCKET: "my-bucket"
@@ -81,22 +79,18 @@ services:
       - nats-data:/data
     restart: unless-stopped
 
-  faster-whisper:
-    image: linuxserver/faster-whisper:latest
-    container_name: faster-whisper
+  whisper:
+    build:
+      context: ./whisper
+      dockerfile: Dockerfile
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Etc/UTC
-      - DEBUG= #optional
-      - LOCAL_ONLY= #optional
-      - WHISPER_BEAM=1 #optional
-      - WHISPER_LANG=auto #optional
-      - WHISPER_MODEL=auto #optional
+      WHISPER_MODEL: small.en
+      WHISPER_DEVICE: cpu
+      TORCH_HOME: /models
     volumes:
-      - /path/to/faster-whisper/data:/config
+      - whisper-models:/models
     ports:
-      - 10300:10300
+      - "10300:10300"
     restart: unless-stopped
 
   # Elasticsearch (одновузловий для dev)
@@ -183,6 +177,15 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: 'true'
 
+  static-server:
+    image: joseluisq/static-web-server:2-alpine
+    container_name: static-server
+    volumes:
+      - ./tests/static:/var/public:ro
+    ports:
+      - "8383:80"
+    restart: unless-stopped
+
 volumes:
   nats-data:
   es-data:
@@ -190,3 +193,4 @@ volumes:
   seaweedfs-master-data:
   seaweedfs-volume-data:
   seaweedfs-filer-data:
+  whisper-models:
