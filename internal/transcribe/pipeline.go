@@ -27,7 +27,7 @@ import (
 
 // RawContentReadyEvent is emitted to NATS on every processed 30s chunk.
 // It contains the latest chunk text and a rolling window of the previous 6 chunks (total ~3.5 minutes).
-// Subject: "RawContentReady"
+// Subject: "news.RawContentReady"
 // NOTE: Keep this backward compatible; evolve by adding new json fields.
 type RawContentReadyEvent struct {
 	Event        string    `json:"event"`
@@ -40,6 +40,8 @@ type RawContentReadyEvent struct {
 	S3Key        string    `json:"s3_key"`
 	CreatedAt    time.Time `json:"created_at"`
 }
+
+const rawContentReadySubject = "news.RawContentReady"
 
 // JobParams bundles dependencies for ingest jobs.
 type JobParams struct {
@@ -176,7 +178,7 @@ func (j *IngestJob) scanOnce(ctx context.Context) {
 	}
 	sort.Strings(files)
 	for _, f := range files {
-git		if err := j.processOne(ctx, f); err != nil {
+		if err := j.processOne(ctx, f); err != nil {
 			j.log.Warn("process chunk failed", zap.String("file", f), zap.Error(err))
 			continue
 		}
@@ -196,20 +198,41 @@ func (j *IngestJob) processOne(ctx context.Context, path string) error {
 	if err != nil {
 		return fmt.Errorf("s3 upload: %w", err)
 	}
+	tf := filepath.Join(j.tempDir, fmt.Sprintf("segment_%05d.txt", idx))
+	// if file exists and not empty - assume already processed (e.g. from previous run) and skip re-transcription to save time and avoid duplicate events.
+	// This is a simple idempotency mechanism.
+	var text string
+	var textSaved bool
+	if info, err := os.Stat(tf); err == nil && info.Size() > 0 {
+		textBytes, err := os.ReadFile(tf)
+		if err == nil {
+			text = string(textBytes)
+			textSaved = true
+			j.log.Info("chunk already processed, skipping transcription", zap.String("file", path))
+		} else {
+			j.log.Warn("read existing txt failed, will re-transcribe", zap.String("file", tf), zap.Error(err))
+		}
+	}
 
-	// 2) Transcribe with Whisper
-	text, err := j.wh.TranscribeFile(ctx, path)
-	if err != nil {
-		return fmt.Errorf("whisper: %w", err)
+	if !textSaved {
+		// 2) Transcribe with Whisper (with retry/backoff to survive transient cancellations)
+		text, err = j.transcribeWithRetry(ctx, path)
+		if err != nil {
+			return fmt.Errorf("whisper: %w", err)
+		}
+
+		if err := os.WriteFile(tf, []byte(text), 0o644); err != nil {
+			j.log.Warn("write txt temp failed", zap.Error(err))
+		} else {
+			j.log.Info("transcription saved to temp file", zap.String("file", tf))
+			textSaved = true
+		}
 	}
 
 	// 3) Upload transcribed text to S3 as well
 	textKey := filepath.Join("raw", j.jobID, fmt.Sprintf("segment_%05d.txt", idx))
 	// write to temp file then upload via placeholder client
-	tf := filepath.Join(j.tempDir, fmt.Sprintf("segment_%05d.txt", idx))
-	if err := os.WriteFile(tf, []byte(text), 0o644); err != nil {
-		j.log.Warn("write txt temp failed", zap.Error(err))
-	} else {
+	if textSaved {
 		if _, err := j.s3.Upload(ctx, textKey, tf); err != nil {
 			j.log.Warn("s3 upload txt failed", zap.Error(err))
 		}
@@ -253,7 +276,7 @@ func (j *IngestJob) processOne(ctx context.Context, path string) error {
 		CreatedAt:    time.Now().UTC(),
 	}
 	b, _ := json.Marshal(ev)
-	if _, err := j.js.Publish(ctx, "RawContentReady", b); err != nil {
+	if _, err := j.js.Publish(ctx, rawContentReadySubject, b); err != nil {
 		j.log.Warn("nats publish failed", zap.Error(err))
 	}
 	return nil
@@ -278,4 +301,54 @@ func parseIndex(path string) (int, error) {
 	var i int
 	_, err := fmt.Sscanf(mid, "%05d", &i)
 	return i, err
+}
+
+// transcribeWithRetry wraps the whisper call with a bounded retry/backoff for transient issues
+// like context cancellations or connection resets from the Whisper server. It respects the
+// parent context and a per-request timeout based on Whisper config.
+func (j *IngestJob) transcribeWithRetry(ctx context.Context, path string) (string, error) {
+	maxAttempts := 3
+	backoff := 2 * time.Second
+
+	to := time.Duration(j.cfg.Whisper.TimeoutSeconds) * time.Second
+	if to <= 0 {
+		to = 600 * time.Second
+	}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		cctx, cancel := context.WithTimeout(ctx, to)
+		text, err := j.wh.TranscribeFile(cctx, path)
+		cancel()
+		if err == nil {
+			return text, nil
+		}
+		if attempt == maxAttempts || !isRetryableWhisperErr(err) {
+			return "", err
+		}
+		j.log.Warn("whisper transient error, retrying", zap.Error(err), zap.Int("attempt", attempt), zap.String("file", path))
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(backoff):
+			backoff *= 2
+		}
+	}
+	return "", errors.New("unreachable")
+}
+
+func isRetryableWhisperErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "connection reset") || strings.Contains(msg, "broken pipe") {
+		return true
+	}
+	return false
 }
