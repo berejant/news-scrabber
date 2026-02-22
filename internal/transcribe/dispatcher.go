@@ -3,6 +3,7 @@ package transcribe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"news-scrabber/internal/config"
@@ -12,16 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// Dispatcher subscribes to NATS and dispatches VideoTranscribeRequested events to the worker queue.
+// Dispatcher subscribes to NATS and runs VideoTranscribeRequested with bounded concurrency.
 type Dispatcher struct {
-	js       jetstream.JetStream
-	log      *zap.Logger
-	svc      *Service
-	consumer jetstream.Consumer
-	stream   string
-	subjects string
-	ctx      context.Context
-	cancel   context.CancelFunc
+	js            jetstream.JetStream
+	log           *zap.Logger
+	svc           *Service
+	consumer      jetstream.Consumer
+	stream        string
+	subjects      string
+	ctx           context.Context
+	cancel        context.CancelFunc
+	sem           chan struct{}
+	maxConcurrent int
 }
 
 func (d *Dispatcher) processMessages() {
@@ -50,13 +53,47 @@ func (d *Dispatcher) processMessages() {
 			_ = msg.Nak()
 			continue
 		}
-		if err := d.svc.IngestURL(d.ctx, ev.URL, ev.JobID); err != nil {
-			d.log.Warn("failed to enqueue ingest", zap.Error(err), zap.String("url", ev.URL), zap.String("job", ev.JobID))
+
+		// Acquire a worker slot for bounded concurrency.
+		select {
+		case d.sem <- struct{}{}:
+			// acquired
+		case <-d.ctx.Done():
 			_ = msg.Nak()
-			continue
+			return
 		}
-		d.log.Info("enqueued via event", zap.String("url", ev.URL), zap.String("job", ev.JobID))
-		_ = msg.Ack()
+
+		go d.handleMessage(ev, msg)
+	}
+}
+
+func (d *Dispatcher) handleMessage(ev VideoTranscribeRequested, msg jetstream.Msg) {
+	defer func() { <-d.sem }()
+
+	errCh := make(chan error, 1)
+	go func() { errCh <- d.svc.IngestURL(d.ctx, ev.URL, ev.JobID) }()
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err := <-errCh:
+			if err != nil && !errors.Is(err, context.Canceled) {
+				d.log.Warn("job finished with error", zap.Error(err), zap.String("url", ev.URL), zap.String("job", ev.JobID))
+				_ = msg.Nak()
+			} else {
+				d.log.Info("job finished", zap.String("url", ev.URL), zap.String("job", ev.JobID))
+				_ = msg.Ack()
+			}
+			return
+		case <-ticker.C:
+			if err := msg.InProgress(); err != nil {
+				d.log.Debug("in-progress heartbeat failed", zap.Error(err))
+			}
+		case <-d.ctx.Done():
+			return
+		}
 	}
 }
 
@@ -70,12 +107,19 @@ func NewDispatcher(lc fx.Lifecycle, js jetstream.JetStream, log *zap.Logger, cfg
 		subjects = "news.*"
 	}
 
+	maxConc := cfg.Transcribe.MaxConcurrent
+	if maxConc <= 0 {
+		maxConc = 2
+	}
+
 	d := &Dispatcher{
-		log:      log.With(zap.String("component", "transcribe.dispatcher")),
-		js:       js,
-		svc:      svc,
-		stream:   stream,
-		subjects: subjects,
+		log:           log.With(zap.String("component", "transcribe.dispatcher")),
+		js:            js,
+		svc:           svc,
+		stream:        stream,
+		subjects:      subjects,
+		sem:           make(chan struct{}, maxConc),
+		maxConcurrent: maxConc,
 	}
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 
@@ -94,6 +138,7 @@ func NewDispatcher(lc fx.Lifecycle, js jetstream.JetStream, log *zap.Logger, cfg
 				Durable:       "transcribe-dispatcher",
 				AckPolicy:     jetstream.AckExplicitPolicy,
 				AckWait:       30 * time.Second,
+				MaxAckPending: d.maxConcurrent,
 				FilterSubject: SubjectVideoTranscribeRequested,
 			})
 			if err != nil {

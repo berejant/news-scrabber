@@ -25,7 +25,6 @@ func Serve() *fx.App {
 		fx.Module("bootstrap",
 			fx.Provide(config.LoadConfig),
 			fx.Provide(bootstrap.NewLogger),
-			fx.Invoke(bootstrap.StartTracer),
 		),
 
 		fx.Module("infra",

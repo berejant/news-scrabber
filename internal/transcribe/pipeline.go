@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,8 @@ type RawContentReadyEvent struct {
 	S3Key        string    `json:"s3_key"`
 	CreatedAt    time.Time `json:"created_at"`
 }
+
+const segmentDurationSeconds = 60
 
 const rawContentReadySubject = "news.RawContentReady"
 
@@ -109,7 +112,7 @@ func (j *IngestJob) Start(ctx context.Context) error {
 		"-ar", "16000",
 		"-c:a", "pcm_s16le",
 		"-f", "segment",
-		"-segment_time", "30",
+		"-segment_time", strconv.Itoa(segmentDurationSeconds),
 		"-reset_timestamps", "1",
 		segPattern,
 	)
